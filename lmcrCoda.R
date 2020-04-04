@@ -542,7 +542,7 @@ lmcrCoda <- function(X, y, R = NULL, Dummies = NULL,
                      pOutRow = 0.75,
                      # arguments for multiple imputation
                      m = NULL, maxit = 10, eps = 0.5, method = "lmrob",
-                     control = lmrob.control(), corrlim = 0.5,
+                     control = lmrob.control(), corrlim = NULL,
                      init = "KNN", k = 5,
                      # which results to return
                      interpretable = TRUE, single = FALSE,
@@ -574,6 +574,8 @@ lmcrCoda <- function(X, y, R = NULL, Dummies = NULL,
     p <- 0
     namesR <- character()
   }
+  # set default threshold for variable screening in imputation step
+  if (is.null(corrlim)) corrlim <- if (D + p + 1 > 10) 0.5 else 0.2
   # combine real-valued covariates with response variable
   R <- cbind(R, y = y)
   # preparing additional dummy variables
@@ -705,6 +707,8 @@ lmcrCoda <- function(X, y, R = NULL, Dummies = NULL,
 
       ## stage 4: aggregation of regressions from multiple imputed data sets
       coefMI <- lapply(fitList, pool)
+      scalesMI <- sapply(first, "[[", "scale")
+      scaleMI <- mean(scalesMI)
 
       ## add results from single imputation
       if (single) {
@@ -737,7 +741,12 @@ lmcrCoda <- function(X, y, R = NULL, Dummies = NULL,
           # return coefficient matrix
           coefmat
         })
-      } else coefSI <- NULL
+        # extract residual scale
+        scaleSI <- first$scale
+      } else {
+        coefSI <- NULL
+        scaleSI <- NULL
+      }
 
     } else {
 
@@ -763,6 +772,8 @@ lmcrCoda <- function(X, y, R = NULL, Dummies = NULL,
 
       ## stage 4: aggregation of regressions from multiple imputed data sets
       coefMI <- pool(fitList)
+      scalesMI <- sapply(fitList, "[[", "scale")
+      scaleMI <- mean(scalesMI)
 
       ## add results from single imputation
       if (single) {
@@ -785,7 +796,12 @@ lmcrCoda <- function(X, y, R = NULL, Dummies = NULL,
         coefSI <- cbind(coefficients, se, t, pValue)
         tn <- c("Estimate", "Std. Error", "t value", "Pr(>|t|)")
         colnames(coefSI) <- tn
-      } else coefSI <- NULL
+        # extract residual scale
+        scaleSI <- fit$scale
+      } else {
+        coefSI <- NULL
+        scaleSI <- NULL
+      }
 
     }
 
@@ -831,10 +847,18 @@ lmcrCoda <- function(X, y, R = NULL, Dummies = NULL,
         # return coefficient matrix
         coefmat
       })
+      # extract residual scale
+      scaleMI <- first$scale
 
       ## add results from single imputation
       # (which are the same here but without the column for degrees of freedom)
-      coefSI <- if (single) lapply(coefMI, function(cm) cm[, -4, drop = FALSE])
+      if (single) {
+        coefSI <- lapply(coefMI, function(cm) cm[, -4, drop = FALSE])
+        scaleSI <- scaleMI
+      } else {
+        coefSI <- NULL
+        scaleSI <- NULL
+      }
 
     } else {
 
@@ -857,17 +881,26 @@ lmcrCoda <- function(X, y, R = NULL, Dummies = NULL,
       coefMI <- cbind(coefficients, se, t, df, pValue)
       tn <- c("Estimate", "Std. Error", "t value", "df", "Pr(>|t|)")
       colnames(coefMI) <- tn
+      # extract residual scale
+      scaleMI <- fit$scale
 
       ## add results from single imputation
       # (which are the same here but without the column for degrees of freedom)
-      coefSI <- if (single) coefMI[, -4, drop = FALSE]
+      if (single) {
+        coefSI <- coefMI[, -4, drop = FALSE]
+        scaleSI <- scaleMI
+      } else {
+        coefSI <- NULL
+        scaleSI <- NULL
+      }
 
     }
 
   }
 
   ## return object
-  out <- list(SI = coefSI, MI = coefMI, interpretable = interpretable)
+  out <- list(SI = coefSI, scaleSI = scaleSI, MI = coefMI, scaleMI = scaleMI,
+              interpretable = interpretable)
   if (useDDC) out <- c(out, indices)  # return indices of outliers
   class(out) <- "lmcrCoda"
   out
@@ -978,4 +1011,3 @@ print.lmCoda <- function(x, ...) {
   # print results as usual in R
   printCoefmat(coefmat, ...)
 }
-
