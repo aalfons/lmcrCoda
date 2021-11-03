@@ -372,7 +372,9 @@ miCoda <- function(X, R, m = NULL, maxit = 10, eps = 0.5, method = "lmrob",
       missing <- missingX[, j]
       Z[missing, 1] <- Z[missing, 1] +
         rnorm(nMissingX[j], mean = 0, sd = errorX[j] * sqrt(1 + nMissingX[j]/n))
-      XMI[, j] <- pivotCoordInv(Z)[, 1]
+      # XMI[, j] <- pivotCoordInv(Z)[, 1]
+      order <- c(j, seqD[-j])
+      XMI[, order] <- pivotCoordInv(Z)
     }
     # loop over real-valued variables (still sorted according to amount of NAs,
     # but that doesn't matter here)
